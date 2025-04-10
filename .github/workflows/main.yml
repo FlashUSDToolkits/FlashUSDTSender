@@ -1,47 +1,61 @@
-name: Generate Flash USDT SEO Pages
+name: Generate and Deploy Flash USDT SEO Pages
 
 on:
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deploy environment (dev/prod)'
+        required: true
+        default: 'dev'
 
 jobs:
-  generate-html:
+  generate-content:
     runs-on: ubuntu-latest
     env:
       TOGETHER_API_KEY: ${{ secrets.TOGETHER_API }}
     
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4  # Updated to latest checkout version
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-          cache: 'pip'  # Enable caching for faster installs
+          cache: 'pip'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests python-dotenv
 
-      - name: Run HTML Generator
+      - name: Generate HTML Content
         run: |
-          python .github/scripts/generate.py || exit 1
-          # Verify files were generated
-          if [ ! -f generated/index.html ]; then
-            echo "❌ Error: No files generated!"
-            exit 1
-          fi
+          python .github/scripts/generate.py \
+            --env ${{ inputs.environment }} \
+            --output-dir generated
+        env:
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API }}
 
-      - name: Commit and Push
+      - name: Generate Sitemap
+        run: python .github/scripts/sitemap.py
+
+  deploy:
+    needs: generate-content
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.environment == 'prod' }}
+    
+    steps:
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./generated
+
+  post-deploy:
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    
+    steps:
+      - name: Notify Search Engines
         run: |
-          # Only commit if there are changes
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          git add generated/ index.html  # Specific files only
-          
-          if ! git diff --quiet --staged; then
-            git commit -m "Generated Flash USDT HTML via AI [$(date +%Y-%m-%d)]"
-            git push
-          else
-            echo "No changes to commit"
-          fi
+          python .github/scripts/ping_search_console.py
