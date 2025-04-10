@@ -6,10 +6,8 @@ on:
 jobs:
   generate-html:
     runs-on: ubuntu-latest
-
     env:
       TOGETHER_API_KEY: ${{ secrets.TOGETHER_API }}
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -55,19 +53,27 @@ Deliver only the raw HTML for each file using clear markers like:
 ...HTML...
 '
 
+          # Create the JSON payload using a heredoc.
+          JSON_DATA=$(cat <<EOF
+{
+  "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+  "messages": [
+    {"role": "system", "content": "$SYSTEM_PROMPT"},
+    {"role": "user", "content": "Begin generation."}
+  ]
+}
+EOF
+          )
+
+          # Call the Together API.
           RESPONSE=$(curl -s -X POST "https://api.together.xyz/v1/chat/completions" \
             -H "Authorization: Bearer $TOGETHER_API_KEY" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"model\": \"meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8\",
-              \"messages\": [
-                {\"role\": \"system\", \"content\": \"$SYSTEM_PROMPT\"},
-                {\"role\": \"user\", \"content\": \"Begin generation.\"}
-              ]
-            }")
+            -d "$JSON_DATA")
 
           echo "$RESPONSE" > response.json
 
+          # Parse the response for HTML content using jq and then split files with awk.
           CONTENT=$(jq -r '.choices[0].message.content' response.json)
 
           echo "$CONTENT" | awk '
@@ -88,6 +94,7 @@ Deliver only the raw HTML for each file using clear markers like:
             }
           }'
 
+          # If an index.html exists in generated/, copy it to the repository root.
           if [ -f generated/index.html ]; then
             cp generated/index.html index.html
           fi
