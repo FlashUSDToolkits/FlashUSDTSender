@@ -1,0 +1,67 @@
+name: Generate Flash USDT SEO Pages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate-html:
+    runs-on: ubuntu-latest
+
+    env:
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Generate Flash USDT Pages via Together API
+        run: |
+          mkdir -p generated
+
+          PROMPT=$(cat <<EOF
+$(curl -s https://raw.githubusercontent.com/likhonsheikhofficial/templates/main/prompts/flash-usdt-html.txt)
+EOF
+          )
+
+          RESPONSE=$(curl -s -X POST "https://api.together.xyz/v1/chat/completions" \
+            -H "Authorization: Bearer $TOGETHER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+              "messages": [
+                {"role": "system", "content": "'"$PROMPT"'"},
+                {"role": "user", "content": "Begin generation."}
+              ]
+            }')
+
+          echo "$RESPONSE" > response.json
+
+          CONTENT=$(jq -r '.choices[0].message.content' response.json)
+
+          echo "$CONTENT" | awk '
+          /<!-- FILE: / { 
+            match($0, /<!-- FILE: ([^ ]+) -->/, m)
+            filename = m[1]
+            file=""
+            next
+          }
+          {
+            if (filename) {
+              file = file $0 ORS
+              if ($0 ~ /<\/html>/) {
+                print file > filename
+                filename = ""
+                file = ""
+              }
+            }
+          }'
+
+          mv generated/index.html .
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Generated Flash USDT SEO pages"
+          git push
