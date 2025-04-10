@@ -6,7 +6,7 @@ on:
       method:
         description: 'API call method (curl/python/js)'
         required: true
-        default: 'curl'
+        default: 'python'
 
 jobs:
   generate-html:
@@ -19,87 +19,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
-        if: ${{ inputs.method == 'python' }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Set up Node.js
-        if: ${{ inputs.method == 'js' }}
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
+      - name: Install dependencies
+        run: pip install together python-dotenv
 
-      - name: Generate content
-        id: generate
-        run: |
-          mkdir -p generated
-          SYSTEM_PROMPT="You are an expert crypto content writer creating SEO-optimized HTML about Flash USDT..."
-
-          case "${{ inputs.method }}" in
-            curl)
-              curl -X POST "https://api.together.xyz/v1/chat/completions" \
-                -H "Authorization: Bearer $TOGETHER_API_KEY" \
-                -H "Content-Type: application/json" \
-                -d '{
-                  "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-                  "messages": [
-                    {"role": "system", "content": "'"$SYSTEM_PROMPT"'"},
-                    {"role": "user", "content": "Generate all 10 HTML files"}
-                  ],
-                  "temperature": 0.7
-                }' | jq -r '.choices[0].message.content' > response.txt
-              ;;
-
-            python)
-              python3 -c "
-from together import Together
-import json
-
-client = Together(api_key='$TOGETHER_API_KEY')
-response = client.chat.completions.create(
-    model='meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
-    messages=[
-        {'role': 'system', 'content': '''$SYSTEM_PROMPT'''},
-        {'role': 'user', 'content': 'Generate all 10 HTML files'}
-    ]
-)
-print(response.choices[0].message.content)
-" > response.txt
-              ;;
-
-            js)
-              echo "
-import { Together } from 'together-ai';
-const together = new Together(process.env.TOGETHER_API_KEY);
-
-async function main() {
-  const response = await together.chat.completions.create({
-    model: 'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
-    messages: [
-      { role: 'system', content: \`$SYSTEM_PROMPT\` },
-      { role: 'user', content: 'Generate all 10 HTML files' }
-    ]
-  });
-  console.log(response.choices[0].message.content);
-}
-main().catch(console.error);
-" > script.mjs
-              TOGETHER_API_KEY=$TOGETHER_API_KEY node script.mjs > response.txt
-              ;;
-          esac
-
-          awk '
-            /<!-- FILE: / {
-              match($0, /<!-- FILE: (generated\/[^ ]+) -->/, m)
-              filename = m[1]
-              print "Generating: " filename
-              next
-            }
-            filename {
-              print > filename
-              if (/<\/html>/) close(filename)
-            }' response.txt
+      - name: Run generation script
+        run: python .github/scripts/generate.py
+        env:
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API }}
 
       - name: Commit results
         run: |
@@ -107,6 +37,6 @@ main().catch(console.error);
           git config --global user.email "actions@github.com"
           git add .
           if ! git diff --quiet || ! git diff --staged --quiet; then
-            git commit -m "Auto-generated Flash USDT pages (${{ inputs.method }})"
+            git commit -m "Auto-generated Flash USDT pages"
             git push
           fi
