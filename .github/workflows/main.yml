@@ -53,7 +53,7 @@ Deliver only the raw HTML for each file using clear markers like:
 ...HTML...
 '
 
-          # Create the JSON payload using a heredoc.
+          # Create the JSON payload using a heredoc
           JSON_DATA=$(cat <<EOF
 {
   "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
@@ -65,7 +65,7 @@ Deliver only the raw HTML for each file using clear markers like:
 EOF
           )
 
-          # Call the Together API.
+          # Call the Together API
           RESPONSE=$(curl -s -X POST "https://api.together.xyz/v1/chat/completions" \
             -H "Authorization: Bearer $TOGETHER_API_KEY" \
             -H "Content-Type: application/json" \
@@ -73,7 +73,7 @@ EOF
 
           echo "$RESPONSE" > response.json
 
-          # Parse the response for HTML content using jq and then split files with awk.
+          # Parse the response for HTML content
           CONTENT=$(jq -r '.choices[0].message.content' response.json)
 
           echo "$CONTENT" | awk '
@@ -94,7 +94,7 @@ EOF
             }
           }'
 
-          # If an index.html exists in generated/, copy it to the repository root.
+          # Copy index.html to root if generated
           if [ -f generated/index.html ]; then
             cp generated/index.html index.html
           fi
