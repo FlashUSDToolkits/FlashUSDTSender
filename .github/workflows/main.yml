@@ -2,107 +2,112 @@ name: Generate Flash USDT SEO Pages
 
 on:
   workflow_dispatch:
+    inputs:
+      method:
+        description: 'API call method (curl/python/js)'
+        required: true
+        default: 'curl'
 
 jobs:
   generate-html:
     runs-on: ubuntu-latest
     env:
       TOGETHER_API_KEY: ${{ secrets.TOGETHER_API }}
+    
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Generate Flash USDT Pages via Together API
+      - name: Set up Python
+        if: ${{ inputs.method == 'python' }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Set up Node.js
+        if: ${{ inputs.method == 'js' }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Generate content
+        id: generate
         run: |
           mkdir -p generated
+          SYSTEM_PROMPT="You are an expert crypto content writer creating SEO-optimized HTML about Flash USDT..."
 
-          SYSTEM_PROMPT='You are the expert creator of a high-performance crypto site focused on "Flash USDT". Your task is to generate a set of 10 modern HTML pages, each targeting a unique high-intent keyword around Flash USDT.
+          case "${{ inputs.method }}" in
+            curl)
+              curl -X POST "https://api.together.xyz/v1/chat/completions" \
+                -H "Authorization: Bearer $TOGETHER_API_KEY" \
+                -H "Content-Type: application/json" \
+                -d '{
+                  "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+                  "messages": [
+                    {"role": "system", "content": "'"$SYSTEM_PROMPT"'"},
+                    {"role": "user", "content": "Generate all 10 HTML files"}
+                  ],
+                  "temperature": 0.7
+                }' | jq -r '.choices[0].message.content' > response.txt
+              ;;
 
-Each page must:
-- Be fully SEO optimized:
-  - <title>, <meta name="description">, <meta name="keywords">
-  - Open Graph and Twitter Card metadata
-  - Schema.org JSON-LD (type: Article or Product if applicable)
-  - Mobile-friendly <meta name="viewport">
-- Be built with clean semantic HTML5 (header, main, article, footer)
-- Include real content with clear explanations and keyword density (1-2%)
-- Use lazy-loaded images with descriptive alt text (loading="lazy")
-- Include responsive, modern styling (simple inline CSS or style block)
-- Write compelling, original copy for each topic (not just dummy text)
+            python)
+              python3 -c "
+from together import Together
+import json
 
-Topics:
-1. What is Flash USDT and how does it work?
-2. Benefits of using Flash USDT in crypto trading
-3. How to perform a Flash USDT transaction
-4. Flash Loans vs Flash USDT: Key differences
-5. Top 5 platforms supporting Flash USDT
-6. Flash USDT automation tools and bots
-7. Real-life use cases of Flash USDT transfers
-8. Flash USDT for developers: APIs and smart contracts
-9. Security risks and protection in Flash USDT
-10. Future of Flash USDT in DeFi
+client = Together(api_key='$TOGETHER_API_KEY')
+response = client.chat.completions.create(
+    model='meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
+    messages=[
+        {'role': 'system', 'content': '''$SYSTEM_PROMPT'''},
+        {'role': 'user', 'content': 'Generate all 10 HTML files'}
+    ]
+)
+print(response.choices[0].message.content)
+" > response.txt
+              ;;
 
-Also, generate an index.html in the root that:
-- Lists all 10 pages with clean links and previews
-- Uses a modern UI (CSS grid or flexbox, mobile-friendly)
-- Has full SEO/meta and Open Graph setup
-- Title: "Flash USDT Explained | Fastest Crypto Transfers"
+            js)
+              echo "
+import { Together } from 'together-ai';
+const together = new Together(process.env.TOGETHER_API_KEY);
 
-Deliver only the raw HTML for each file using clear markers like:
-<!-- FILE: generated/flash-usdt-how-it-works.html -->
-...HTML...
-'
-
-          # Create the JSON payload using a heredoc
-          JSON_DATA=$(cat <<EOF
-{
-  "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-  "messages": [
-    {"role": "system", "content": "$SYSTEM_PROMPT"},
-    {"role": "user", "content": "Begin generation."}
-  ]
+async function main() {
+  const response = await together.chat.completions.create({
+    model: 'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
+    messages: [
+      { role: 'system', content: \`$SYSTEM_PROMPT\` },
+      { role: 'user', content: 'Generate all 10 HTML files' }
+    ]
+  });
+  console.log(response.choices[0].message.content);
 }
-EOF
-          )
+main().catch(console.error);
+" > script.mjs
+              TOGETHER_API_KEY=$TOGETHER_API_KEY node script.mjs > response.txt
+              ;;
+          esac
 
-          # Call the Together API
-          RESPONSE=$(curl -s -X POST "https://api.together.xyz/v1/chat/completions" \
-            -H "Authorization: Bearer $TOGETHER_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "$JSON_DATA")
-
-          echo "$RESPONSE" > response.json
-
-          # Parse the response for HTML content
-          CONTENT=$(jq -r '.choices[0].message.content' response.json)
-
-          echo "$CONTENT" | awk '
-          /<!-- FILE: / {
-            match($0, /<!-- FILE: ([^ ]+) -->/, m)
-            filename = m[1]
-            file = ""
-            next
-          }
-          {
-            if (filename) {
-              file = file $0 ORS
-              if ($0 ~ /<\/html>/) {
-                print file > filename
-                filename = ""
-                file = ""
-              }
+          # Process response
+          awk '
+            /<!-- FILE: / {
+              match($0, /<!-- FILE: (generated\/[^ ]+) -->/, m)
+              filename = m[1]
+              print "Generating: " filename
+              next
             }
-          }'
+            filename {
+              print > filename
+              if (/<\/html>/) close(filename)
+            }' response.txt
 
-          # Copy index.html to root if generated
-          if [ -f generated/index.html ]; then
-            cp generated/index.html index.html
-          fi
-
-      - name: Commit and Push
+      - name: Commit results
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Generated Flash USDT SEO HTML files"
-          git push
+          if ! git diff --quiet || ! git diff --staged --quiet; then
+            git commit -m "Auto-generated Flash USDT pages (${{ inputs.method }})"
+            git push
+          fi
