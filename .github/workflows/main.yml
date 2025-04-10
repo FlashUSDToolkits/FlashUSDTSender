@@ -18,31 +18,63 @@ jobs:
         run: |
           mkdir -p generated
 
-          PROMPT=$(cat <<EOF
-$(curl -s https://raw.githubusercontent.com/likhonsheikhofficial/templates/main/prompts/flash-usdt-html.txt)
-EOF
-          )
+          SYSTEM_PROMPT='You are the expert creator of a high-performance crypto site focused on "Flash USDT". Your task is to generate a set of 10 modern HTML pages, each targeting a unique high-intent keyword around Flash USDT.
+
+Each page must:
+- Be fully SEO optimized:
+  - <title>, <meta name="description">, <meta name="keywords">
+  - Open Graph and Twitter Card metadata
+  - Schema.org JSON-LD (type: Article or Product if applicable)
+  - Mobile-friendly <meta name="viewport">
+- Be built with clean semantic HTML5 (header, main, article, footer)
+- Include real content with clear explanations and keyword density (1-2%)
+- Use lazy-loaded images with descriptive alt text (loading="lazy")
+- Include responsive, modern styling (simple inline CSS or style block)
+- Write compelling, original copy for each topic (not just dummy text)
+
+Topics:
+1. What is Flash USDT and how does it work?
+2. Benefits of using Flash USDT in crypto trading
+3. How to perform a Flash USDT transaction
+4. Flash Loans vs Flash USDT: Key differences
+5. Top 5 platforms supporting Flash USDT
+6. Flash USDT automation tools and bots
+7. Real-life use cases of Flash USDT transfers
+8. Flash USDT for developers: APIs and smart contracts
+9. Security risks and protection in Flash USDT
+10. Future of Flash USDT in DeFi
+
+Also, generate an index.html in the root that:
+- Lists all 10 pages with clean links and previews
+- Uses a modern UI (CSS grid or flexbox, mobile-friendly)
+- Has full SEO/meta and Open Graph setup
+- Title: "Flash USDT Explained | Fastest Crypto Transfers"
+
+Deliver only the raw HTML for each file using clear markers like:
+<!-- FILE: generated/flash-usdt-how-it-works.html -->
+...HTML...
+'
 
           RESPONSE=$(curl -s -X POST "https://api.together.xyz/v1/chat/completions" \
             -H "Authorization: Bearer $TOGETHER_API_KEY" \
             -H "Content-Type: application/json" \
-            -d '{
-              "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-              "messages": [
-                {"role": "system", "content": "'"$PROMPT"'"},
-                {"role": "user", "content": "Begin generation."}
+            -d "{
+              \"model\": \"meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8\",
+              \"messages\": [
+                {\"role\": \"system\", \"content\": \"$SYSTEM_PROMPT\"},
+                {\"role\": \"user\", \"content\": \"Begin generation.\"}
               ]
-            }')
+            }")
 
           echo "$RESPONSE" > response.json
 
           CONTENT=$(jq -r '.choices[0].message.content' response.json)
 
           echo "$CONTENT" | awk '
-          /<!-- FILE: / { 
+          /<!-- FILE: / {
             match($0, /<!-- FILE: ([^ ]+) -->/, m)
             filename = m[1]
-            file=""
+            file = ""
             next
           }
           {
@@ -56,12 +88,14 @@ EOF
             }
           }'
 
-          mv generated/index.html .
+          if [ -f generated/index.html ]; then
+            cp generated/index.html index.html
+          fi
 
       - name: Commit and Push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Generated Flash USDT SEO pages"
+          git commit -m "Generated Flash USDT SEO HTML files"
           git push
